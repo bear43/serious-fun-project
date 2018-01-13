@@ -86,11 +86,13 @@ private:
 public:
 	static void AddPart()
 	{
+		fprintf(stdout, "Added new part snake's body\n");
 		Pos t;
 		if (Parts.size() == 0)
 			t = Pos(9, 9);
 		else t = Pos(Parts.back().oldPosition.X, Parts.back().oldPosition.Y);
 		Parts.push_back(Cube(t, Color(255,255,255)));
+		fprintf(stdout, "Now %i parts\n", Parts.size());
 	}
 	static vector<Cube>* GetParts()
 	{
@@ -110,7 +112,7 @@ public:
 			}
 		}
 	}
-	static void MoveParts(unsigned char direction)
+	/*static void MoveParts(unsigned char direction)
 	{
 		unsigned int x = 0;
 		unsigned int y = 0;
@@ -143,7 +145,7 @@ public:
 			else if (it->position.Y > 19 && y == 1) it->position.Y = 0;
 			else if (it->position.Y < 0 && y == -1) it->position.Y = 19;
 		}
-	}
+	}*/
 	static void SaveOldPosition()
 	{
 		for (
@@ -155,6 +157,12 @@ public:
 			it->oldPosition = it->position;
 		}
 	}
+	static void Reset()
+	{
+		Direction = 0;
+		Parts.clear();
+		AddPart();
+	}
 	static unsigned char Direction;
 	static float Speed;
 	Body()
@@ -162,8 +170,6 @@ public:
 		AddPart();
 	}
 };
-
-
 
 class Food
 {
@@ -173,13 +179,31 @@ public:
 	static bool Drawed;
 };
 
+class Game
+{
+public:
+	static int Width;//Ширина
+	static int Height;//Высота
+	static string Title;//Название окна
+	static GLFWwindow* MainWindow;//Указатель на главное окно
+	static int Cell;//Размер поля
+	static int PitchSquare;//Площадь поля
+	static bool DrawGrid;//Рисовать сетку?
+	static void Restart()//Метод, который возвращает все на свои места
+	{
+		fprintf(stdout, "Game restarts!\n");
+		Body::Reset();
+	}
+};
+
 //Params
-	int Width = 640;
-	int Height = 480;
-	string Title = "Application";
-	GLFWwindow* MainWindow = NULL;
-	int M = 20;
-	int N = 20;
+	int Game::Width = 640;
+	int Game::Height = 480;
+	string Game::Title = "Application";
+	GLFWwindow* Game::MainWindow = NULL;
+	int Game::Cell = 10;//Поле 10x10 клеток
+	int Game::PitchSquare = Game::Cell*Game::Cell;
+	bool Game::DrawGrid = false;
 //Params
 //BODY
 	vector<Cube> Body::Parts = vector<Cube>();
@@ -192,6 +216,7 @@ public:
 //FOOD
 //Utils
 	double Time = 0;
+	double _time = 0.0f;
 //Utils
 bool Food::Drawed = false;
 
@@ -202,123 +227,124 @@ void ErrorCallback(int Code, const char* description)
 
 void Keyboard(GLFWwindow* win, int key, int scancode, int action, int mods)
 {
-	if (key == GLFW_KEY_RIGHT && action == GLFW_PRESS)
-	{
-		Body::Direction = DIR_RIGHT;
-	}
-	if (key == GLFW_KEY_LEFT && action == GLFW_PRESS)
-	{
-		Body::Direction = DIR_LEFT;
-	}
-	if (key == GLFW_KEY_UP && action == GLFW_PRESS)
-	{
-		Body::Direction = DIR_UP;
-	}
-	if (key == GLFW_KEY_DOWN && action == GLFW_PRESS)
-	{
-		Body::Direction = DIR_DOWN;
-	}
+	if (key == GLFW_KEY_RIGHT && (action == GLFW_PRESS || action == GLFW_REPEAT)) Body::Direction = DIR_RIGHT;
+	if (key == GLFW_KEY_LEFT && (action == GLFW_PRESS || action == GLFW_REPEAT)) Body::Direction = DIR_LEFT;
+	if (key == GLFW_KEY_UP && (action == GLFW_PRESS || action == GLFW_REPEAT)) Body::Direction = DIR_UP;
+	if (key == GLFW_KEY_DOWN && (action == GLFW_PRESS || action == GLFW_REPEAT)) Body::Direction = DIR_DOWN;
+	if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS) glfwSetWindowShouldClose(Game::MainWindow, true);
+	if (key == GLFW_KEY_SPACE && action == GLFW_PRESS) Game::Restart();
 }
 
 void DrawCube(Pos position)
 {
+	int x = Game::Cell*position.X;
+	int y = Game::Cell*position.Y;
 	glBegin(GL_POLYGON);
-	glVertex2f(-100.0f + 10.0f*position.X, 100.0f - 10.0f*position.Y);
-	glVertex2f(-90.0f + 10.0f*position.X, 100.0f - 10.0f*position.Y);
-	glVertex2f(-90.0f + 10.0f*position.X, 90.0f - 10.0f*position.Y);
-	glVertex2f(-100.0f + 10.0f*position.X, 90.0f - 10.0f*position.Y);
+	glVertex2i(-Game::PitchSquare + x, Game::PitchSquare - y);
+	glVertex2i(-(Game::PitchSquare - Game::Cell) + x, Game::PitchSquare - y);
+	glVertex2i(-(Game::PitchSquare - Game::Cell) + x, (Game::PitchSquare - Game::Cell) - y);
+	glVertex2i(-Game::PitchSquare + x, (Game::PitchSquare - Game::Cell) - y);
 	glEnd();
+}
+
+void Render()
+{
+	_time = glfwGetTime();
+	if (Time - _time < -Body::Speed)
+	{
+		Time = _time;
+		if (Body::Direction == 0)
+		{
+			return;
+		}
+		else
+		{
+			Body::SaveOldPosition();
+			if (Body::Direction == DIR_LEFT)//Left
+				Body::GetParts()->begin()->position.X -= 1;
+			else if (Body::Direction == DIR_RIGHT)//Right
+				Body::GetParts()->begin()->position.X += 1;
+			else if (Body::Direction == DIR_UP)//Up
+				Body::GetParts()->begin()->position.Y -= 1;
+			else if (Body::Direction == DIR_DOWN)//Down
+				Body::GetParts()->begin()->position.Y += 1;
+			int a = 2 * Game::Cell - 1;
+			if (Body::GetParts()->begin()->position.X < 0) Body::GetParts()->begin()->position.X = a;
+			if (Body::GetParts()->begin()->position.X > a) Body::GetParts()->begin()->position.X = 0;
+			if (Body::GetParts()->begin()->position.Y < 0) Body::GetParts()->begin()->position.Y = a;
+			if (Body::GetParts()->begin()->position.Y > a) Body::GetParts()->begin()->position.Y = 0;
+			Body::Refresh();
+		}
+	}
+	glfwGetFramebufferSize(Game::MainWindow, &Game::Width, &Game::Height);
+	glViewport(0, 0, Game::Width, Game::Height);
+	glClear(GL_COLOR_BUFFER_BIT);
+	glMatrixMode(GL_PROJECTION);
+	glLoadIdentity();
+	gluOrtho2D(-Game::PitchSquare, Game::PitchSquare, -Game::PitchSquare, Game::PitchSquare);
+	glMatrixMode(GL_MODELVIEW);
+	glLoadIdentity();
+	glBegin(GL_LINES);
+	if (Game::DrawGrid) for (int i = -(Game::PitchSquare- Game::Cell); i < Game::PitchSquare; i += Game::Cell)
+	{
+		glVertex2i(-Game::PitchSquare, i);
+		glVertex2i(Game::PitchSquare, i);
+		glVertex2i(i, -Game::PitchSquare);
+		glVertex2i(i, Game::PitchSquare);
+	}
+	glEnd();
+	if (Food::Drawed == false)
+	{
+		int b = 2 * Game::Cell;
+		Food::Position.X = (std::rand() % (b));
+		Food::Position.Y = (std::rand() % (b));
+		Food::Drawed = true;
+	}
+	if (Body::GetParts()->size() != 0)
+		if (Food::Position == Body::GetParts()->begin()->position)
+		{
+			fprintf(stdout, "Food has been ate\n");
+			Food::Drawed = false;
+			Body::AddPart();
+		}
+		else
+		{
+			glColor3ub(Food::color.Red, Food::color.Green, Food::color.Blue);
+			DrawCube(Food::Position);
+			glColor3ub(255, 255, 255);
+		}
+	if (Body::GetParts()->size() != 0)
+	{
+		for (vector<Cube>::iterator
+			it = Body::GetParts()->begin(),
+			iter_end = Body::GetParts()->end();
+			it != iter_end; ++it)
+		{
+			glColor3ub(it->color.Red, it->color.Green, it->color.Blue);
+			DrawCube(it->position);
+		}
+		glColor3ub(255, 255, 255);
+	}
+	glFlush();
 }
 
 int main(int argc, char** argv)
 {
-	fprintf(stdout, "Launnching application...");
+	fprintf(stdout, "Launching application...\n");
 	glfwSetErrorCallback(ErrorCallback);
 	if(!glfwInit()) return -1;
-	if (!(MainWindow = glfwCreateWindow(Width, Height, Title.c_str(), NULL, NULL))) return -1;
-	glfwSetKeyCallback(MainWindow, Keyboard);
-	glfwMakeContextCurrent(MainWindow);
+	fprintf(stdout, "Opening window\n");
+	if (!(Game::MainWindow = glfwCreateWindow(Game::Width, Game::Height, Game::Title.c_str(), NULL, NULL))) return -1;
+	glfwSetKeyCallback(Game::MainWindow, Keyboard);
+	glfwMakeContextCurrent(Game::MainWindow);
 	glfwSwapInterval(1);
-	double _time = 0.0f;
 	srand((unsigned int)time(NULL));
 	Body::AddPart();
-	while (!glfwWindowShouldClose(MainWindow))
+	fprintf(stdout, "Entering render loop...\n");
+	while (!glfwWindowShouldClose(Game::MainWindow))
 	{
-		_time = glfwGetTime();
-		if (Time - _time < -Body::Speed)
-		{
-			Time = _time;
-			if (Body::Direction == 0)
-			{
-				continue;
-			}
-			else
-			{
-				Body::SaveOldPosition();
-				if (Body::Direction == DIR_LEFT)//Left
-					Body::GetParts()->begin()->position.X -= 1;
-				else if (Body::Direction == DIR_RIGHT)//Right
-					Body::GetParts()->begin()->position.X += 1;
-				else if (Body::Direction == DIR_UP)//Up
-					Body::GetParts()->begin()->position.Y -= 1;
-				else if (Body::Direction == DIR_DOWN)//Down
-					Body::GetParts()->begin()->position.Y += 1;
-				if (Body::GetParts()->begin()->position.X < 0) Body::GetParts()->begin()->position.X = 19;
-				if (Body::GetParts()->begin()->position.X > 19) Body::GetParts()->begin()->position.X = 0;
-				if (Body::GetParts()->begin()->position.Y < 0) Body::GetParts()->begin()->position.Y = 19;
-				if (Body::GetParts()->begin()->position.Y > 19) Body::GetParts()->begin()->position.Y = 0;
-				Body::Refresh();
-			}
-		}
-		glfwGetFramebufferSize(MainWindow, &Width, &Height);
-		glViewport(0, 0, Width, Height);
-		glClear(GL_COLOR_BUFFER_BIT);
-		glMatrixMode(GL_PROJECTION);
-		glLoadIdentity();
-		gluOrtho2D(-100.0f, 100.0f, -100.0f, 100.0f);
-		glMatrixMode(GL_MODELVIEW);
-		glLoadIdentity();
-		glBegin(GL_LINES);
-		for (float i = -90.0f; i < 100.0f; i += 10.0f)
-		{
-			glVertex2f(-100.0f, i);
-			glVertex2f(100.0f, i);
-			glVertex2f(i, -100.0f);
-			glVertex2f(i, 100.0f);
-		}
-		glEnd();
-		if (Food::Drawed == false)
-		{
-			Food::Position.X = (std::rand() % (20));
-			Food::Position.Y = (std::rand() % (20));
-			Food::Drawed = true;
-		}
-		if(Body::GetParts()->size() != 0)
-			if (Food::Position == Body::GetParts()->begin()->position)
-			{
-				Food::Drawed = false;
-				Body::AddPart();
-			}
-			else
-			{
-				glColor3ub(Food::color.Red, Food::color.Green, Food::color.Blue);
-				DrawCube(Food::Position);
-				glColor3ub(255, 255, 255);
-			}
-		if (Body::GetParts()->size() != 0)
-		{
-			for (vector<Cube>::iterator
-				it = Body::GetParts()->begin(),
-				iter_end = Body::GetParts()->end();
-				it != iter_end; ++it)
-			{
-			glColor3ub(it->color.Red, it->color.Green, it->color.Blue);
-				DrawCube(it->position);
-			}
-			glColor3ub(255, 255, 255);
-		}
-		glFlush();
-		glfwSwapBuffers(MainWindow);
+		Render();
+		glfwSwapBuffers(Game::MainWindow);
 		glfwPollEvents();
 	}
 	glfwTerminate();
