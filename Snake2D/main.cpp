@@ -30,10 +30,15 @@ struct Color
 		Green = g;
 		Blue = b;
 	}
+	Color()
+	{
+
+	}
 };
 
 class Pos
 {
+private:
 public:
 	int X;
 	int Y;
@@ -52,55 +57,58 @@ public:
 		if ((a.X == X) && (a.Y == Y)) return true;
 		return false;
 	}
+	const void operator=(const Pos a)
+	{
+		X = a.X;
+		Y = a.Y;
+	}
 };
 
-class Head
+struct Cube
 {
-public:
-	static Pos Position;
-	static Color color;
-	static float Speed;
-	static int Direction;
+	Pos position;
+	Pos oldPosition;
+	Color color;
+	Cube()
+	{
+	}
+	Cube(Pos pos, Color col)
+	{
+		position = pos;
+		color = col;
+	}
 };
 
 class Body
 {
 private:
-	static vector<Pos> Parts;
+	static vector<Cube> Parts;
 public:
 	static void AddPart()
 	{
 		Pos t;
-		if (Parts.size() == 0) t = Head::Position;
-		else t = Parts.back();
-		switch (Head::Direction)
-		{
-			case DIR_LEFT:
-			{
-				t = Pos(t.X + 1, t.Y);
-				break;
-			}
-			case DIR_RIGHT:
-			{
-				t = Pos(t.X - 1, t.Y);
-				break;
-			}
-			case DIR_UP:
-			{
-				t = Pos(t.X, t.Y +1);
-				break;
-			}
-			case DIR_DOWN:
-			{
-				t = Pos(t.X, t.Y -1);
-				break;
-			}
-		}
-		Parts.push_back(t);
+		if (Parts.size() == 0)
+			t = Pos(9, 9);
+		else t = Pos(Parts.back().oldPosition.X, Parts.back().oldPosition.Y);
+		Parts.push_back(Cube(t, Color(255,255,255)));
 	}
-	static vector<Pos>* GetParts()
+	static vector<Cube>* GetParts()
 	{
 		return &Parts;
+	}
+	static void Refresh()
+	{
+		if(Parts.size() > 1)
+		{
+			for (
+				vector<Cube>::iterator it = ++Parts.begin(), end = Parts.end();
+				it != end;
+				++it
+				)
+			{
+				it->position = (it - 1)->oldPosition;
+			}
+		}
 	}
 	static void MoveParts(unsigned char direction)
 	{
@@ -123,20 +131,36 @@ public:
 			x = 1; y = 0;
 		}
 		for (
-			vector<Pos>::iterator it = Parts.begin();
+			vector<Cube>::iterator it = Parts.begin();
 			it != Parts.end();
 			++it
 			)
 		{
-			it->X += x;
-			it->Y += y;
-			if (it->X > 19 && x == 1) it->X = 0;
-			else if (it->X < 0 && x == -1) it->X = 19;
-			else if (it->Y > 19 && y == 1) it->Y = 0;
-			else if (it->Y < 0 && y == -1) it->Y = 19;
+			it->position.X += x;
+			it->position.Y += y;
+			if (it->position.X > 19 && x == 1) it->position.X = 0;
+			else if (it->position.X < 0 && x == -1) it->position.X = 19;
+			else if (it->position.Y > 19 && y == 1) it->position.Y = 0;
+			else if (it->position.Y < 0 && y == -1) it->position.Y = 19;
 		}
 	}
-	static Color color;
+	static void SaveOldPosition()
+	{
+		for (
+			vector<Cube>::iterator it = Parts.begin(), end = Parts.end();
+			it != end;
+			++it
+			)
+		{
+			it->oldPosition = it->position;
+		}
+	}
+	static unsigned char Direction;
+	static float Speed;
+	Body()
+	{
+		AddPart();
+	}
 };
 
 
@@ -158,17 +182,10 @@ public:
 	int N = 20;
 //Params
 //BODY
-	vector<Pos> Body::Parts = vector<Pos>();
-	//int Body::Direction = 1;
-	Color Body::color = Color(200, 255, 200);
-//BODY	double Time = 0;
-//Utils
-//HEAD
-	Pos Head::Position = Pos(0, 0);
-	Color Head::color = Color(255, 255, 255);
-	float Head::Speed = 0.3f;
-	int Head::Direction = 1;
-//HEAD
+	vector<Cube> Body::Parts = vector<Cube>();
+	unsigned char Body::Direction = 0;
+	float Body::Speed = 0.2f;
+//BODY	
 //FOOD
 	Pos Food::Position = Pos(0, 0);
 	Color Food::color = Color(255, 0, 0);
@@ -187,19 +204,19 @@ void Keyboard(GLFWwindow* win, int key, int scancode, int action, int mods)
 {
 	if (key == GLFW_KEY_RIGHT && action == GLFW_PRESS)
 	{
-		Head::Direction = DIR_RIGHT;
+		Body::Direction = DIR_RIGHT;
 	}
 	if (key == GLFW_KEY_LEFT && action == GLFW_PRESS)
 	{
-		Head::Direction = DIR_LEFT;
+		Body::Direction = DIR_LEFT;
 	}
 	if (key == GLFW_KEY_UP && action == GLFW_PRESS)
 	{
-		Head::Direction = DIR_UP;
+		Body::Direction = DIR_UP;
 	}
 	if (key == GLFW_KEY_DOWN && action == GLFW_PRESS)
 	{
-		Head::Direction = DIR_DOWN;
+		Body::Direction = DIR_DOWN;
 	}
 }
 
@@ -222,38 +239,36 @@ int main(int argc, char** argv)
 	glfwSetKeyCallback(MainWindow, Keyboard);
 	glfwMakeContextCurrent(MainWindow);
 	glfwSwapInterval(1);
-	float _time = 0.0f;
-	srand(time(NULL));
+	double _time = 0.0f;
+	srand((unsigned int)time(NULL));
+	Body::AddPart();
 	while (!glfwWindowShouldClose(MainWindow))
 	{
 		_time = glfwGetTime();
-		if (Time - _time < -Head::Speed)
+		if (Time - _time < -Body::Speed)
 		{
 			Time = _time;
-			if (Head::Direction == DIR_LEFT)//Left
+			if (Body::Direction == 0)
 			{
-				Head::Position.X -= 1;
-				Body::MoveParts(DIR_LEFT);
+				continue;
 			}
-			else if (Head::Direction == DIR_RIGHT)//Right
+			else
 			{
-				Head::Position.X += 1;
-				Body::MoveParts(DIR_RIGHT);
+				Body::SaveOldPosition();
+				if (Body::Direction == DIR_LEFT)//Left
+					Body::GetParts()->begin()->position.X -= 1;
+				else if (Body::Direction == DIR_RIGHT)//Right
+					Body::GetParts()->begin()->position.X += 1;
+				else if (Body::Direction == DIR_UP)//Up
+					Body::GetParts()->begin()->position.Y -= 1;
+				else if (Body::Direction == DIR_DOWN)//Down
+					Body::GetParts()->begin()->position.Y += 1;
+				if (Body::GetParts()->begin()->position.X < 0) Body::GetParts()->begin()->position.X = 19;
+				if (Body::GetParts()->begin()->position.X > 19) Body::GetParts()->begin()->position.X = 0;
+				if (Body::GetParts()->begin()->position.Y < 0) Body::GetParts()->begin()->position.Y = 19;
+				if (Body::GetParts()->begin()->position.Y > 19) Body::GetParts()->begin()->position.Y = 0;
+				Body::Refresh();
 			}
-			else if (Head::Direction == DIR_UP)//Up
-			{
-				Head::Position.Y -= 1;
-				Body::MoveParts(DIR_UP);
-			}
-			else if (Head::Direction == DIR_DOWN)//Down
-			{
-				Head::Position.Y += 1;
-				Body::MoveParts(DIR_DOWN);
-			}
-			if (Head::Position.X < 0) Head::Position.X = 19;
-			if (Head::Position.X > 19) Head::Position.X = 0;
-			if (Head::Position.Y < 0) Head::Position.Y = 19;
-			if (Head::Position.Y > 19) Head::Position.Y = 0;
 		}
 		glfwGetFramebufferSize(MainWindow, &Width, &Height);
 		glViewport(0, 0, Width, Height);
@@ -278,27 +293,29 @@ int main(int argc, char** argv)
 			Food::Position.Y = (std::rand() % (20));
 			Food::Drawed = true;
 		}
-		if ((Food::Position == Head::Position))
-		{
-			Food::Drawed = false;
-			Body::AddPart();
-		}
-		else
-		{
-			glColor3ub(Food::color.Red, Food::color.Green, Food::color.Blue);
-			DrawCube(Food::Position);
-			glColor3ub(255, 255, 255);
-		}
-		DrawCube(Head::Position);
+		if(Body::GetParts()->size() != 0)
+			if (Food::Position == Body::GetParts()->begin()->position)
+			{
+				Food::Drawed = false;
+				Body::AddPart();
+			}
+			else
+			{
+				glColor3ub(Food::color.Red, Food::color.Green, Food::color.Blue);
+				DrawCube(Food::Position);
+				glColor3ub(255, 255, 255);
+			}
 		if (Body::GetParts()->size() != 0)
 		{
-			for (vector<Pos>::iterator
+			for (vector<Cube>::iterator
 				it = Body::GetParts()->begin(),
 				iter_end = Body::GetParts()->end();
 				it != iter_end; ++it)
 			{
-				DrawCube(*it);
+			glColor3ub(it->color.Red, it->color.Green, it->color.Blue);
+				DrawCube(it->position);
 			}
+			glColor3ub(255, 255, 255);
 		}
 		glFlush();
 		glfwSwapBuffers(MainWindow);
