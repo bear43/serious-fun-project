@@ -1,3 +1,5 @@
+#define _CRT_SECURE_NO_WARNINGS
+
 #include <Windows.h>
 #include <gl\GL.h>
 #include <gl\GLU.h>
@@ -7,10 +9,14 @@
 #include <GLFW\glfw3.h>
 #include <time.h>
 #include <vector>
+#include <Psapi.h>
+#include <memory>
+#include <stdarg.h>
 #pragma comment(lib, "glfw3.lib")
 #pragma comment(lib, "glfw3dll.lib")
 #pragma comment(lib,"opengl32.lib")
 #pragma comment(lib,"glu32.lib")
+#pragma comment(lib,"psapi.lib")
 
 #define DIR_UP 0b0100
 #define DIR_DOWN 0b1000
@@ -18,6 +24,31 @@
 #define DIR_RIGHT 0b0010
 
 using namespace std;
+
+unsigned int GetUsedMemory()
+{
+	PROCESS_MEMORY_COUNTERS pmc;
+	ZeroMemory(&pmc, sizeof(PROCESS_MEMORY_COUNTERS));
+	GetProcessMemoryInfo(GetCurrentProcess(), &pmc, sizeof(PROCESS_MEMORY_COUNTERS));
+	if (pmc.cb == 0)
+		fprintf(stdout, "I cannot recive count of usage memory\n");
+	else
+		return pmc.WorkingSetSize / 1024;//KB
+}
+
+class String
+{
+public:
+	static string format(string mask, ...)
+	{
+		va_list arglist;
+		va_start(arglist, mask);
+		unique_ptr<char> buffer(new char[256]);
+		vsprintf(buffer.get(), mask.c_str(), arglist);
+		va_end(arglist);
+		return string(buffer.get());
+	}
+};
 
 struct Color
 {
@@ -82,23 +113,28 @@ struct Cube
 class Body
 {
 private:
-	static vector<Cube> Parts;
+	static vector<Body*> Bodies;
+	vector<Cube> Parts;
 public:
-	static void AddPart()
+	static void Clear()
 	{
-		fprintf(stdout, "Added new part snake's body\n");
+		Bodies.clear();
+	}
+	void AddPart(Color col)
+	{
 		Pos t;
 		if (Parts.size() == 0)
 			t = Pos(9, 9);
 		else t = Pos(Parts.back().oldPosition.X, Parts.back().oldPosition.Y);
-		Parts.push_back(Cube(t, Color(255,255,255)));
+		Parts.push_back(Cube(t, col));
+		fprintf(stdout, "Added new part snake's body\n");
 		fprintf(stdout, "Now %i parts\n", Parts.size());
 	}
-	static vector<Cube>* GetParts()
+	vector<Cube>* GetParts()
 	{
 		return &Parts;
 	}
-	static void Refresh()
+	void Refresh()
 	{
 		if(Parts.size() > 1)
 		{
@@ -112,41 +148,7 @@ public:
 			}
 		}
 	}
-	/*static void MoveParts(unsigned char direction)
-	{
-		unsigned int x = 0;
-		unsigned int y = 0;
-		if (direction == DIR_UP)
-		{
-			x = 0; y = -1;
-		}
-		else if (direction == DIR_DOWN)
-		{
-			x = 0; y = 1;
-		}
-		else if (direction == DIR_LEFT)
-		{
-			x = -1; y = 0;
-		}
-		else if (direction == DIR_RIGHT)
-		{
-			x = 1; y = 0;
-		}
-		for (
-			vector<Cube>::iterator it = Parts.begin();
-			it != Parts.end();
-			++it
-			)
-		{
-			it->position.X += x;
-			it->position.Y += y;
-			if (it->position.X > 19 && x == 1) it->position.X = 0;
-			else if (it->position.X < 0 && x == -1) it->position.X = 19;
-			else if (it->position.Y > 19 && y == 1) it->position.Y = 0;
-			else if (it->position.Y < 0 && y == -1) it->position.Y = 19;
-		}
-	}*/
-	static void SaveOldPosition()
+	void SaveOldPosition()
 	{
 		for (
 			vector<Cube>::iterator it = Parts.begin(), end = Parts.end();
@@ -157,19 +159,28 @@ public:
 			it->oldPosition = it->position;
 		}
 	}
-	static void Reset()
+	void Reset()
 	{
 		Direction = 0;
 		Parts.clear();
-		AddPart();
+		AddPart(Color(50, 255, 50));
 	}
-	static unsigned char Direction;
-	static float Speed;
+	unsigned char Direction;
+	float Speed;
 	Body()
 	{
-		AddPart();
+		Bodies.push_back(this);
+		Parts = vector<Cube>();
+		Direction = 0;
+		Speed = 0.2f;
+		AddPart(Color(50, 255, 100));
+	}
+	~Body()
+	{
 	}
 };
+
+Body MainBody;
 
 class Food
 {
@@ -181,6 +192,7 @@ public:
 
 class Game
 {
+private:
 public:
 	static int Width;//Ширина
 	static int Height;//Высота
@@ -192,7 +204,8 @@ public:
 	static void Restart()//Метод, который возвращает все на свои места
 	{
 		fprintf(stdout, "Game restarts!\n");
-		Body::Reset();
+		Body::Clear();
+		MainBody = Body();
 	}
 };
 
@@ -205,11 +218,9 @@ public:
 	int Game::PitchSquare = Game::Cell*Game::Cell;
 	bool Game::DrawGrid = false;
 //Params
-//BODY
-	vector<Cube> Body::Parts = vector<Cube>();
-	unsigned char Body::Direction = 0;
-	float Body::Speed = 0.2f;
-//BODY	
+//Body
+	vector<Body*> Body::Bodies = vector<Body*>();
+//Body
 //FOOD
 	Pos Food::Position = Pos(0, 0);
 	Color Food::color = Color(255, 0, 0);
@@ -227,10 +238,10 @@ void ErrorCallback(int Code, const char* description)
 
 void Keyboard(GLFWwindow* win, int key, int scancode, int action, int mods)
 {
-	if (key == GLFW_KEY_RIGHT && (action == GLFW_PRESS || action == GLFW_REPEAT)) Body::Direction = DIR_RIGHT;
-	if (key == GLFW_KEY_LEFT && (action == GLFW_PRESS || action == GLFW_REPEAT)) Body::Direction = DIR_LEFT;
-	if (key == GLFW_KEY_UP && (action == GLFW_PRESS || action == GLFW_REPEAT)) Body::Direction = DIR_UP;
-	if (key == GLFW_KEY_DOWN && (action == GLFW_PRESS || action == GLFW_REPEAT)) Body::Direction = DIR_DOWN;
+	if (key == GLFW_KEY_RIGHT && (action == GLFW_PRESS || action == GLFW_REPEAT)) MainBody.Direction = DIR_RIGHT;
+	if (key == GLFW_KEY_LEFT && (action == GLFW_PRESS || action == GLFW_REPEAT)) MainBody.Direction = DIR_LEFT;
+	if (key == GLFW_KEY_UP && (action == GLFW_PRESS || action == GLFW_REPEAT)) MainBody.Direction = DIR_UP;
+	if (key == GLFW_KEY_DOWN && (action == GLFW_PRESS || action == GLFW_REPEAT)) MainBody.Direction = DIR_DOWN;
 	if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS) glfwSetWindowShouldClose(Game::MainWindow, true);
 	if (key == GLFW_KEY_SPACE && action == GLFW_PRESS) Game::Restart();
 }
@@ -250,30 +261,30 @@ void DrawCube(Pos position)
 void Render()
 {
 	_time = glfwGetTime();
-	if (Time - _time < -Body::Speed)
+	if (Time - _time < -MainBody.Speed)
 	{
 		Time = _time;
-		if (Body::Direction == 0)
+		if (MainBody.Direction == 0)
 		{
-			return;
+			//return;
 		}
 		else
 		{
-			Body::SaveOldPosition();
-			if (Body::Direction == DIR_LEFT)//Left
-				Body::GetParts()->begin()->position.X -= 1;
-			else if (Body::Direction == DIR_RIGHT)//Right
-				Body::GetParts()->begin()->position.X += 1;
-			else if (Body::Direction == DIR_UP)//Up
-				Body::GetParts()->begin()->position.Y -= 1;
-			else if (Body::Direction == DIR_DOWN)//Down
-				Body::GetParts()->begin()->position.Y += 1;
+			MainBody.SaveOldPosition();
+			if (MainBody.Direction == DIR_LEFT)//Left
+				MainBody.GetParts()->begin()->position.X -= 1;
+			else if (MainBody.Direction == DIR_RIGHT)//Right
+				MainBody.GetParts()->begin()->position.X += 1;
+			else if (MainBody.Direction == DIR_UP)//Up
+				MainBody.GetParts()->begin()->position.Y -= 1;
+			else if (MainBody.Direction == DIR_DOWN)//Down
+				MainBody.GetParts()->begin()->position.Y += 1;
 			int a = 2 * Game::Cell - 1;
-			if (Body::GetParts()->begin()->position.X < 0) Body::GetParts()->begin()->position.X = a;
-			if (Body::GetParts()->begin()->position.X > a) Body::GetParts()->begin()->position.X = 0;
-			if (Body::GetParts()->begin()->position.Y < 0) Body::GetParts()->begin()->position.Y = a;
-			if (Body::GetParts()->begin()->position.Y > a) Body::GetParts()->begin()->position.Y = 0;
-			Body::Refresh();
+			if (MainBody.GetParts()->begin()->position.X < 0) MainBody.GetParts()->begin()->position.X = a;
+			if (MainBody.GetParts()->begin()->position.X > a) MainBody.GetParts()->begin()->position.X = 0;
+			if (MainBody.GetParts()->begin()->position.Y < 0) MainBody.GetParts()->begin()->position.Y = a;
+			if (MainBody.GetParts()->begin()->position.Y > a) MainBody.GetParts()->begin()->position.Y = 0;
+			MainBody.Refresh();
 		}
 	}
 	glfwGetFramebufferSize(Game::MainWindow, &Game::Width, &Game::Height);
@@ -300,12 +311,12 @@ void Render()
 		Food::Position.Y = (std::rand() % (b));
 		Food::Drawed = true;
 	}
-	if (Body::GetParts()->size() != 0)
-		if (Food::Position == Body::GetParts()->begin()->position)
+	if (MainBody.GetParts()->size() != 0)
+		if (Food::Position == MainBody.GetParts()->begin()->position)
 		{
 			fprintf(stdout, "Food has been ate\n");
 			Food::Drawed = false;
-			Body::AddPart();
+			MainBody.AddPart(Color(255, 255, 255));
 		}
 		else
 		{
@@ -313,11 +324,11 @@ void Render()
 			DrawCube(Food::Position);
 			glColor3ub(255, 255, 255);
 		}
-	if (Body::GetParts()->size() != 0)
+	if (MainBody.GetParts()->size() != 0)
 	{
 		for (vector<Cube>::iterator
-			it = Body::GetParts()->begin(),
-			iter_end = Body::GetParts()->end();
+			it = MainBody.GetParts()->begin(),
+			iter_end = MainBody.GetParts()->end();
 			it != iter_end; ++it)
 		{
 			glColor3ub(it->color.Red, it->color.Green, it->color.Blue);
@@ -339,11 +350,12 @@ int main(int argc, char** argv)
 	glfwMakeContextCurrent(Game::MainWindow);
 	glfwSwapInterval(1);
 	srand((unsigned int)time(NULL));
-	Body::AddPart();
 	fprintf(stdout, "Entering render loop...\n");
 	while (!glfwWindowShouldClose(Game::MainWindow))
 	{
 		Render();
+		Game::Title = String::format("uMemory: %i", GetUsedMemory());
+		glfwSetWindowTitle(Game::MainWindow, Game::Title.c_str());
 		glfwSwapBuffers(Game::MainWindow);
 		glfwPollEvents();
 	}
