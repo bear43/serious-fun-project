@@ -1,309 +1,340 @@
-#include <Windows.h>
-#include <gl\GL.h>
-#include <gl\GLU.h>
-#include <stdio.h>
-#include <string>
 #include <iostream>
-#include <GLFW\glfw3.h>
-#include <time.h>
+#include <string>
+#include <sstream>
 #include <vector>
+#include <map>
+#include <array>
+#include <Windows.h>
+#include <GL\glew.h>
+#include <GLFW\glfw3.h>
+//#include <GLFW\glfw3native.h>
 #pragma comment(lib, "glfw3.lib")
 #pragma comment(lib, "glfw3dll.lib")
 #pragma comment(lib,"opengl32.lib")
 #pragma comment(lib,"glu32.lib")
-
-#define DIR_UP 0b0100
-#define DIR_DOWN 0b1000
-#define DIR_LEFT 0b0001
-#define DIR_RIGHT 0b0010
+#pragma comment(lib, "glew32.lib")
+#pragma comment(lib, "glew32s.lib")
 
 using namespace std;
 
-struct Color
-{
-	unsigned char Red;
-	unsigned char Green;
-	unsigned char Blue;
-	Color(unsigned char r, unsigned char g, unsigned char b)
-	{
-		Red = r;
-		Green = g;
-		Blue = b;
-	}
+float tri[] = {
+	-0.5f, -0.5f, 0.0f,
+	0.0f, 0.5f, 0.0f,
+	0.5f, 0.0f, 0.0f
 };
 
-class Pos
-{
-public:
-	int X;
-	int Y;
-	Pos(unsigned int x, unsigned int y)
-	{
-		X = x;
-		Y = y;
-	}
-	Pos()
-	{
-		X = 0;
-		Y = 0;
-	}
-	const bool operator==(const Pos a)
-	{
-		if ((a.X == X) && (a.Y == Y)) return true;
-		return false;
-	}
-};
-
-class Head
-{
-public:
-	static Pos Position;
-	static Color color;
-	static float Speed;
-	static int Direction;
-};
-
-class Body
+class Window
 {
 private:
-	static vector<Pos> Parts;
+	static vector<Window> windows;
+	int width;
+	int height;
+	string title;
+	GLFWwindow* glfwPointer;
+	Window* parent;
 public:
-	static void AddPart()
+	Window(int Width, int Height, string Title, GLFWwindow* Pointer, Window* Parent)
 	{
-		Pos t;
-		if (Parts.size() == 0) t = Head::Position;
-		else t = Parts.back();
-		switch (Head::Direction)
-		{
-			case DIR_LEFT:
-			{
-				t = Pos(t.X + 1, t.Y);
-				break;
-			}
-			case DIR_RIGHT:
-			{
-				t = Pos(t.X - 1, t.Y);
-				break;
-			}
-			case DIR_UP:
-			{
-				t = Pos(t.X, t.Y +1);
-				break;
-			}
-			case DIR_DOWN:
-			{
-				t = Pos(t.X, t.Y -1);
-				break;
-			}
-		}
-		Parts.push_back(t);
+		width = Width;
+		height = Height;
+		title = Title;
+		glfwPointer = Pointer;
+		parent = Parent;
+		cout << "Window \"" << title << "\" has been created" << endl;
 	}
-	static vector<Pos>* GetParts()
+	Window() : Window(640, 480, "MainWindow", NULL, NULL) { }
+	Window(const Window &w)
 	{
-		return &Parts;
+		*this = w;
 	}
-	static void MoveParts(unsigned char direction)
+	void operator=(const Window w)
 	{
-		unsigned int x = 0;
-		unsigned int y = 0;
-		if (direction == DIR_UP)
-		{
-			x = 0; y = -1;
-		}
-		else if (direction == DIR_DOWN)
-		{
-			x = 0; y = 1;
-		}
-		else if (direction == DIR_LEFT)
-		{
-			x = -1; y = 0;
-		}
-		else if (direction == DIR_RIGHT)
-		{
-			x = 1; y = 0;
-		}
-		for (
-			vector<Pos>::iterator it = Parts.begin();
-			it != Parts.end();
-			++it
-			)
-		{
-			it->X += x;
-			it->Y += y;
-			if (it->X > 19 && x == 1) it->X = 0;
-			else if (it->X < 0 && x == -1) it->X = 19;
-			else if (it->Y > 19 && y == 1) it->Y = 0;
-			else if (it->Y < 0 && y == -1) it->Y = 19;
-		}
+		width = w.width;
+		height = w.height;
+		title = w.title;
+		glfwPointer = w.glfwPointer;
+		parent = w.parent;
 	}
-	static Color color;
+	~Window()
+	{
+		cout << "Window \"" << this->title << "\" has been destroyed" << endl;
+	}
+	void setWidth(int w)
+	{
+		width = w;
+	}
+	void setHeight(int h)
+	{
+		height = h;
+	}
+	void setTitle(string t)
+	{
+		title = t;
+	}
+	void setglfwPointer(GLFWwindow* win)
+	{
+		glfwPointer = win;
+	}
+	int getWidth()
+	{
+		return width;
+	}
+	int getHeight()
+	{
+		return height;
+	}
+	string getTitle()
+	{
+		return title;
+	}
+	GLFWwindow* getglfwPointer()
+	{
+		return glfwPointer;
+	}
+	vector<Window> &getWindowsContainer()
+	{
+		return windows;
+	}
+};
+vector<Window> Window::windows = vector<Window>();
+
+class Command
+{
+protected:
+	static map<string, Command*> All;
+	static stringstream buffer;
+	string name;
+	//string params;
+public:
+	static void onEnter(char key)
+	{
+		if (key == 1)//Enter
+		{
+			if (All.find(buffer.str()) != All.end()) All[buffer.str()]->action();//Run command
+			else cout << "Command not found!" << endl;
+			buffer.str("");
+			buffer.clear();
+			return;
+		}
+		buffer << key;
+	}
+	virtual void action() = 0;
+	Command(string Name)
+	{
+		name = Name;
+		All.insert(pair<string, Command*>(name, this));
+	}
+	Command() : Command("none") { }
 };
 
+stringstream Command::buffer;
+map<string, Command*> Command::All = map<string, Command*>();
 
-
-class Food
+class Keyboard
 {
 public:
-	static Pos Position;
-	static Color color;
-	static bool Drawed;
+	static void keyboardCallback(GLFWwindow* win, int key, int scancode, int action, int mods)
+	{
+		if (action == GLFW_PRESS) Command::onEnter((char)key);
+	}
 };
 
-//Params
-	int Width = 640;
-	int Height = 480;
-	string Title = "Application";
-	GLFWwindow* MainWindow = NULL;
-	int M = 20;
-	int N = 20;
-//Params
-//BODY
-	vector<Pos> Body::Parts = vector<Pos>();
-	//int Body::Direction = 1;
-	Color Body::color = Color(200, 255, 200);
-//BODY	double Time = 0;
-//Utils
-//HEAD
-	Pos Head::Position = Pos(0, 0);
-	Color Head::color = Color(255, 255, 255);
-	float Head::Speed = 0.3f;
-	int Head::Direction = 1;
-//HEAD
-//FOOD
-	Pos Food::Position = Pos(0, 0);
-	Color Food::color = Color(255, 0, 0);
-//FOOD
-//Utils
-	double Time = 0;
-//Utils
-bool Food::Drawed = false;
-
-void ErrorCallback(int Code, const char* description)
+class Graphic
 {
-	fprintf(stderr, "Catched error. Code: %i\n\n%s\n", Code, description);
-}
+private:
+public:
+	class VBO
+	{
+	private:
+		float* vertices;
+		GLuint id;
+	public:
+		unsigned int getID()
+		{
+			return id;
+		}
+		void setVertices(float* vert)
+		{
+			vertices = vert;
+		}
+		float* getVertices()
+		{
+			return vertices;
+		}
+		VBO(float vert[], GLuint comp_count)
+		{
+			vertices = vert;
+			glGenBuffers(1, &id);
+			glBindBuffer(GL_ARRAY_BUFFER, id);
+			glBufferData(GL_ARRAY_BUFFER, sizeof(float)*comp_count, vert, GL_STATIC_DRAW);
+			glVertexAttribPointer(0, comp_count/3, GL_FLOAT, false, 0, 0);
+			glBindBuffer(GL_ARRAY_BUFFER, 0);
+		}
+		VBO()
+		{
 
-void Keyboard(GLFWwindow* win, int key, int scancode, int action, int mods)
-{
-	if (key == GLFW_KEY_RIGHT && action == GLFW_PRESS)
-	{
-		Head::Direction = DIR_RIGHT;
-	}
-	if (key == GLFW_KEY_LEFT && action == GLFW_PRESS)
-	{
-		Head::Direction = DIR_LEFT;
-	}
-	if (key == GLFW_KEY_UP && action == GLFW_PRESS)
-	{
-		Head::Direction = DIR_UP;
-	}
-	if (key == GLFW_KEY_DOWN && action == GLFW_PRESS)
-	{
-		Head::Direction = DIR_DOWN;
-	}
-}
+		}
+		~VBO()
+		{
 
-void DrawCube(Pos position)
-{
-	glBegin(GL_POLYGON);
-	glVertex2f(-100.0f + 10.0f*position.X, 100.0f - 10.0f*position.Y);
-	glVertex2f(-90.0f + 10.0f*position.X, 100.0f - 10.0f*position.Y);
-	glVertex2f(-90.0f + 10.0f*position.X, 90.0f - 10.0f*position.Y);
-	glVertex2f(-100.0f + 10.0f*position.X, 90.0f - 10.0f*position.Y);
-	glEnd();
-}
-
-int main(int argc, char** argv)
-{
-	fprintf(stdout, "Launnching application...");
-	glfwSetErrorCallback(ErrorCallback);
-	if(!glfwInit()) return -1;
-	if (!(MainWindow = glfwCreateWindow(Width, Height, Title.c_str(), NULL, NULL))) return -1;
-	glfwSetKeyCallback(MainWindow, Keyboard);
-	glfwMakeContextCurrent(MainWindow);
-	glfwSwapInterval(1);
-	float _time = 0.0f;
-	srand(time(NULL));
-	while (!glfwWindowShouldClose(MainWindow))
+		}
+		void Clean()
+		{
+			cout << "Destroying VBO #" << id << endl;
+			glDeleteBuffers(1, &id);
+		}
+	};
+	class VAO
 	{
-		_time = glfwGetTime();
-		if (Time - _time < -Head::Speed)
+	private:
+		GLuint id;
+	public:
+		unsigned int getID()
 		{
-			Time = _time;
-			if (Head::Direction == DIR_LEFT)//Left
-			{
-				Head::Position.X -= 1;
-				Body::MoveParts(DIR_LEFT);
-			}
-			else if (Head::Direction == DIR_RIGHT)//Right
-			{
-				Head::Position.X += 1;
-				Body::MoveParts(DIR_RIGHT);
-			}
-			else if (Head::Direction == DIR_UP)//Up
-			{
-				Head::Position.Y -= 1;
-				Body::MoveParts(DIR_UP);
-			}
-			else if (Head::Direction == DIR_DOWN)//Down
-			{
-				Head::Position.Y += 1;
-				Body::MoveParts(DIR_DOWN);
-			}
-			if (Head::Position.X < 0) Head::Position.X = 19;
-			if (Head::Position.X > 19) Head::Position.X = 0;
-			if (Head::Position.Y < 0) Head::Position.Y = 19;
-			if (Head::Position.Y > 19) Head::Position.Y = 0;
+			return id;
 		}
-		glfwGetFramebufferSize(MainWindow, &Width, &Height);
-		glViewport(0, 0, Width, Height);
-		glClear(GL_COLOR_BUFFER_BIT);
-		glMatrixMode(GL_PROJECTION);
-		glLoadIdentity();
-		gluOrtho2D(-100.0f, 100.0f, -100.0f, 100.0f);
-		glMatrixMode(GL_MODELVIEW);
-		glLoadIdentity();
-		glBegin(GL_LINES);
-		for (float i = -90.0f; i < 100.0f; i += 10.0f)
+		VAO()
 		{
-			glVertex2f(-100.0f, i);
-			glVertex2f(100.0f, i);
-			glVertex2f(i, -100.0f);
-			glVertex2f(i, 100.0f);
+			glGenVertexArrays(1, &id);
+			glBindVertexArray(id);
 		}
-		glEnd();
-		if (Food::Drawed == false)
+		~VAO()
 		{
-			Food::Position.X = (std::rand() % (20));
-			Food::Position.Y = (std::rand() % (20));
-			Food::Drawed = true;
+
 		}
-		if ((Food::Position == Head::Position))
+		void Clean()
 		{
-			Food::Drawed = false;
-			Body::AddPart();
+			cout << "Deleting VAO #" << id << endl;
+			glDeleteVertexArrays(1, &id);
 		}
-		else
+	};
+	class Model
+	{
+	private:
+		float* vertices;
+		unsigned int count;
+		string title;
+	public:
+		VAO arrayObject;
+		VBO buffer;
+		void setVertices(float* v)
 		{
-			glColor3ub(Food::color.Red, Food::color.Green, Food::color.Blue);
-			DrawCube(Food::Position);
+			vertices = v;
+		}
+		float* getVertices()
+		{
+			return vertices;
+		}
+		string getTitle()
+		{
+			return title;
+		}
+		void render()
+		{
+			glBindVertexArray(arrayObject.getID());
+			glEnableVertexAttribArray(0);
+			glDrawArrays(GL_TRIANGLES, 0, count/3);
+			glDisableVertexAttribArray(0);
+			glBindVertexArray(0);
+		}
+		void setTitle(string t)
+		{
+			title = t;
+		}
+		Model(string t, float* V, GLuint c)
+		{
+			title = t;
+			vertices = V;
+			count = c;
+			arrayObject = VAO();
+			buffer = VBO(vertices, count);
+			glBindVertexArray(0);
+		}
+		Model()
+		{
+
+		}
+		~Model()
+		{
+			cout << "Destroying model \"" << title << "\"" << endl;
+			arrayObject.Clean();
+			buffer.Clean();
+		}
+	};
+	static void render()
+	{
+	}
+};
+
+class Application
+{
+private:
+	static int errorCode;
+	static string errorDescription;
+	static Window MainWindow;
+public:
+	static void errorCallback(int code, const char* desc)
+	{
+		errorCode = code;
+		errorDescription = string(desc);
+		cout << "[Error] Code: " << errorCode << ". Description: " << errorDescription << "." << endl;
+	}
+	static void setMainWindow(const Window &w)
+	{
+		MainWindow = w;
+	}
+	static Window &getMainWindow()
+	{
+		return MainWindow;
+	}
+	static int Run()
+	{
+		cout << "Running application..." << endl;
+		void* p;
+		glfwSetErrorCallback(errorCallback);
+		if (glfwInit() == GLFW_FALSE) return errorCode;
+		cout << "GLFW has been inited" << endl;
+		p = glfwCreateWindow(MainWindow.getWidth(), MainWindow.getHeight(), MainWindow.getTitle().c_str(), NULL, NULL);
+		if (p == GLFW_FALSE) return errorCode;
+		cout << "Main window has been created" << endl;
+		MainWindow.setglfwPointer((GLFWwindow*)p);
+		glfwMakeContextCurrent(MainWindow.getglfwPointer());
+		if (glewInit() != GLEW_OK) return errorCode;
+		cout << "GLEW has been inited" << endl;
+		glfwSetKeyCallback(MainWindow.getglfwPointer(), Keyboard::keyboardCallback);
+		Graphic::Model triangle("triangle", tri, 9);
+		while (errorCode == 0 && !glfwWindowShouldClose(MainWindow.getglfwPointer()))
+		{
+			glClearColor(1.0f, 0.0f, 0.0f, 0.0f);
+			glClear(GL_COLOR_BUFFER_BIT);
 			glColor3ub(255, 255, 255);
+			triangle.render();
+			glfwSwapBuffers(MainWindow.getglfwPointer());
+			glfwPollEvents();
 		}
-		DrawCube(Head::Position);
-		if (Body::GetParts()->size() != 0)
-		{
-			for (vector<Pos>::iterator
-				it = Body::GetParts()->begin(),
-				iter_end = Body::GetParts()->end();
-				it != iter_end; ++it)
-			{
-				DrawCube(*it);
-			}
-		}
-		glFlush();
-		glfwSwapBuffers(MainWindow);
-		glfwPollEvents();
+		glfwTerminate();
+	exit:
+		return errorCode;
 	}
-	glfwTerminate();
-	return 0;
+};
+
+
+int Application::errorCode = 0;
+string Application::errorDescription = "None";
+Window Application::MainWindow = Window();
+
+class cmd_Exit : public Command
+{
+public:
+	void action()
+	{
+		glfwSetWindowShouldClose(Application::getMainWindow().getglfwPointer(), true);
+	}
+	cmd_Exit() : Command("EXIT") {}
+};
+
+int main(int argc, char* argv[])
+{
+	cmd_Exit();
+	return Application::Run();
 }
